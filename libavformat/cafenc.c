@@ -34,6 +34,8 @@ typedef struct {
     int size_buffer_size;
     int size_entries_used;
     int packets;
+    int64_t duration;
+    int64_t last_packet_duration;
 } CAFContext;
 
 static uint32_t codec_flags(enum AVCodecID codec_id) {
@@ -238,6 +240,8 @@ static int caf_write_packet(AVFormatContext *s, AVPacket *pkt)
                 pkt_sizes[caf->size_entries_used++] = 128 | top;
         }
         pkt_sizes[caf->size_entries_used++] = pkt->size & 127;
+        caf->duration += pkt->duration;
+        caf->last_packet_duration = pkt->duration;
         caf->packets++;
     }
     avio_write(s->pb, pkt->data, pkt->size);
@@ -259,7 +263,11 @@ static int caf_write_trailer(AVFormatContext *s)
         if (!par->block_align) {
             int packet_size = samples_per_packet(par);
             if (!packet_size) {
-                packet_size = st->duration / (caf->packets - 1);
+                if (caf->duration) {
+                    packet_size = (caf->duration - caf->last_packet_duration) / (caf->packets - 1);
+                } else {
+                    packet_size = st->duration / (caf->packets - 1);
+                }
                 avio_seek(pb, FRAME_SIZE_OFFSET, SEEK_SET);
                 avio_wb32(pb, packet_size);
             }
